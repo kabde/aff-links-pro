@@ -8,6 +8,7 @@ Plugin WordPress pour gerer des liens d'affiliation avec:
 - Redirection forcee avec ou sans slash final, meme si la resolution CPT tombe en 404.
 - Colonne QR code dans l'administration.
 - Shortcode `[aff_link id="123"]` ou `[aff_link slug="amazon"]`.
+- GitHub-based update checks from WordPress admin.
 
 ## Installation
 
@@ -17,4 +18,16 @@ Plugin WordPress pour gerer des liens d'affiliation avec:
 
 ## Version
 
-Version: `1.2.4`
+Version: `1.2.5`
+
+## Updates
+
+This plugin checks the latest GitHub release from:
+
+`https://github.com/kabde/aff-links-pro`
+
+Each release must include a WordPress-ready asset named:
+
+`aff-links-pro.zip`
+
+The ZIP must contain the `aff-links/` plugin directory at its root.

@@ -1,21 +1,24 @@
 <?php
 /**
  * Plugin Name: Aff Links Pro
- * Description: Gestion professionnelle de liens d'affiliation avec CPT, redirections /go/, QR codes et shortcode.
- * Version:     1.2.4
+ * Description: Create and manage affiliate links with clean /go/ redirects, destination URLs, QR codes, and shortcode support.
+ * Version:     1.2.5
  * Author:      Abderrahim Khalid
  * License:     GPL-2.0+
  * Text Domain: aff-links
  * Requires at least: 5.0
  * Tested up to: 7.0
  * Requires PHP: 7.4
+ * Update URI:  https://github.com/kabde/aff-links-pro
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AFF_LINKS_PRO_VERSION', '1.2.4' );
+define( 'AFF_LINKS_PRO_VERSION', '1.2.5' );
+define( 'AFF_LINKS_PRO_GITHUB_REPO', 'kabde/aff-links-pro' );
+define( 'AFF_LINKS_PRO_RELEASE_ASSET', 'aff-links-pro.zip' );
 
 /*--------------------------------------------------------------
 # 1. CPT « aff » (permalien /go/slug)
@@ -189,11 +192,126 @@ add_shortcode( 'aff_link', function ( $atts ) {
 	return '<a href="' . esc_url( get_permalink( $post->ID ) ) . '">' . esc_html( $post->post_title ) . '</a>';
 } );
 
+/*--------------------------------------------------------------
+# 6. GitHub updates
+--------------------------------------------------------------*/
+function aff_links_pro_get_github_release() {
+	$cache_key = 'aff_links_pro_github_release';
+	$release   = get_site_transient( $cache_key );
+
+	if ( false !== $release ) {
+		return is_array( $release ) ? $release : array();
+	}
+
+	$response = wp_remote_get(
+		'https://api.github.com/repos/' . AFF_LINKS_PRO_GITHUB_REPO . '/releases/latest',
+		array(
+			'timeout' => 10,
+			'headers' => array(
+				'Accept'     => 'application/vnd.github+json',
+				'User-Agent' => 'Aff-Links-Pro/' . AFF_LINKS_PRO_VERSION . '; ' . home_url(),
+			),
+		)
+	);
+
+	if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
+		set_site_transient( $cache_key, array(), HOUR_IN_SECONDS );
+		return array();
+	}
+
+	$data = json_decode( wp_remote_retrieve_body( $response ), true );
+	if ( ! is_array( $data ) || empty( $data['tag_name'] ) ) {
+		set_site_transient( $cache_key, array(), HOUR_IN_SECONDS );
+		return array();
+	}
+
+	set_site_transient( $cache_key, $data, 6 * HOUR_IN_SECONDS );
+	return $data;
+}
+
+function aff_links_pro_get_release_asset_url( $release ) {
+	if ( empty( $release['assets'] ) || ! is_array( $release['assets'] ) ) {
+		return '';
+	}
+
+	foreach ( $release['assets'] as $asset ) {
+		if ( ! empty( $asset['name'] ) && AFF_LINKS_PRO_RELEASE_ASSET === $asset['name'] && ! empty( $asset['browser_download_url'] ) ) {
+			return esc_url_raw( $asset['browser_download_url'] );
+		}
+	}
+
+	return '';
+}
+
+function aff_links_pro_add_update_info( $transient ) {
+	if ( empty( $transient ) || ! is_object( $transient ) ) {
+		return $transient;
+	}
+
+	$plugin_file = plugin_basename( __FILE__ );
+	$release     = aff_links_pro_get_github_release();
+	$version     = ! empty( $release['tag_name'] ) ? ltrim( $release['tag_name'], 'vV' ) : '';
+	$package     = aff_links_pro_get_release_asset_url( $release );
+
+	if ( ! $version || ! $package || ! version_compare( AFF_LINKS_PRO_VERSION, $version, '<' ) ) {
+		return $transient;
+	}
+
+	$transient->response[ $plugin_file ] = (object) array(
+		'id'            => 'github.com/' . AFF_LINKS_PRO_GITHUB_REPO,
+		'slug'          => dirname( $plugin_file ),
+		'plugin'        => $plugin_file,
+		'new_version'   => $version,
+		'url'           => 'https://github.com/' . AFF_LINKS_PRO_GITHUB_REPO,
+		'package'       => $package,
+		'tested'        => '7.0',
+		'requires'      => '5.0',
+		'requires_php'  => '7.4',
+	);
+
+	return $transient;
+}
+add_filter( 'pre_set_site_transient_update_plugins', 'aff_links_pro_add_update_info' );
+
+function aff_links_pro_plugins_api( $result, $action, $args ) {
+	if ( 'plugin_information' !== $action || empty( $args->slug ) || 'aff-links' !== $args->slug ) {
+		return $result;
+	}
+
+	$release = aff_links_pro_get_github_release();
+	$version = ! empty( $release['tag_name'] ) ? ltrim( $release['tag_name'], 'vV' ) : AFF_LINKS_PRO_VERSION;
+	$package = aff_links_pro_get_release_asset_url( $release );
+
+	return (object) array(
+		'name'          => 'Aff Links Pro',
+		'slug'          => 'aff-links',
+		'version'       => $version,
+		'author'        => '<a href="https://github.com/kabde">Abderrahim Khalid</a>',
+		'homepage'      => 'https://github.com/' . AFF_LINKS_PRO_GITHUB_REPO,
+		'download_link' => $package,
+		'requires'      => '5.0',
+		'tested'        => '7.0',
+		'requires_php'  => '7.4',
+		'sections'      => array(
+			'description' => 'Create and manage affiliate links with clean /go/ redirects, destination URLs, QR codes, and shortcode support.',
+			'changelog'   => ! empty( $release['body'] ) ? wp_kses_post( wpautop( $release['body'] ) ) : 'See the GitHub release notes.',
+		),
+	);
+}
+add_filter( 'plugins_api', 'aff_links_pro_plugins_api', 20, 3 );
+
+function aff_links_pro_clear_update_cache() {
+	delete_site_transient( 'aff_links_pro_github_release' );
+}
+add_action( 'upgrader_process_complete', 'aff_links_pro_clear_update_cache' );
+
 register_activation_hook( __FILE__, function () {
 	aff_links_pro_register_post_type();
+	aff_links_pro_clear_update_cache();
 	flush_rewrite_rules();
 } );
 
 register_deactivation_hook( __FILE__, function () {
+	aff_links_pro_clear_update_cache();
 	flush_rewrite_rules();
 } );
