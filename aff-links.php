@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Aff Links Pro
  * Description: Gestion professionnelle de liens d'affiliation avec CPT, redirections /go/, QR codes et shortcode.
- * Version:     1.2.1
+ * Version:     1.2.4
  * Author:      Abderrahim Khalid
  * License:     GPL-2.0+
  * Text Domain: aff-links
@@ -15,12 +15,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AFF_LINKS_PRO_VERSION', '1.2.1' );
+define( 'AFF_LINKS_PRO_VERSION', '1.2.4' );
 
 /*--------------------------------------------------------------
 # 1. CPT « aff » (permalien /go/slug)
 --------------------------------------------------------------*/
-add_action( 'init', function () {
+function aff_links_pro_register_post_type() {
 
 	$labels = array(
 		'name'          => __( 'Affiliations',         'aff-links' ),
@@ -51,7 +51,8 @@ add_action( 'init', function () {
 			'pages'      => false,
 		),
 	) );
-} );
+}
+add_action( 'init', 'aff_links_pro_register_post_type' );
 
 /*--------------------------------------------------------------
 # 2. Metabox : URL d’affiliation
@@ -119,17 +120,52 @@ add_action( 'manage_aff_posts_custom_column', function ( $col, $post_id ) {
 }, 10, 2 );
 
 /*--------------------------------------------------------------
-# 4. Redirection : /go/slug → URL d’affiliation
+# 4. Redirection : /go/slug -> URL d'affiliation
 --------------------------------------------------------------*/
-add_action( 'template_redirect', function () {
-	if ( is_singular( 'aff' ) ) {
-		$url = get_post_meta( get_queried_object_id(), '_aff_url', true );
-		if ( $url && wp_http_validate_url( $url ) ) {
-			wp_redirect( esc_url_raw( $url ), 302 ); // mettre 301 si permanent
-			exit;
-		}
+function aff_links_pro_get_request_slug() {
+	$path = isset( $_SERVER['REQUEST_URI'] ) ? wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH ) : '';
+	$path = trim( (string) $path, '/' );
+
+	$home_path = trim( (string) wp_parse_url( home_url(), PHP_URL_PATH ), '/' );
+	if ( $home_path && 0 === strpos( $path, $home_path . '/' ) ) {
+		$path = substr( $path, strlen( $home_path ) + 1 );
 	}
-} );
+
+	$parts = array_values( array_filter( explode( '/', $path ) ) );
+	if ( 2 !== count( $parts ) || 'go' !== $parts[0] ) {
+		return '';
+	}
+
+	return sanitize_title( rawurldecode( $parts[1] ) );
+}
+
+function aff_links_pro_redirect_to_destination() {
+	$post_id = 0;
+	$slug    = aff_links_pro_get_request_slug();
+
+	if ( $slug ) {
+		$post = get_page_by_path( $slug, OBJECT, 'aff' );
+		if ( ! $post || 'publish' !== $post->post_status ) {
+			return;
+		}
+
+		$post_id = $post->ID;
+	} elseif ( did_action( 'wp' ) && is_singular( 'aff' ) ) {
+		$post_id = get_queried_object_id();
+	}
+
+	if ( ! $post_id ) {
+		return;
+	}
+
+	$url = get_post_meta( $post_id, '_aff_url', true );
+	if ( $url && wp_http_validate_url( $url ) ) {
+		wp_redirect( esc_url_raw( $url ), 302 );
+		exit;
+	}
+}
+add_action( 'parse_request', 'aff_links_pro_redirect_to_destination', 0 );
+add_action( 'template_redirect', 'aff_links_pro_redirect_to_destination', 0 );
 
 /*--------------------------------------------------------------
 # 5. Short-code : [aff_link id="123"] ou [aff_link slug="amazon"]
@@ -154,6 +190,7 @@ add_shortcode( 'aff_link', function ( $atts ) {
 } );
 
 register_activation_hook( __FILE__, function () {
+	aff_links_pro_register_post_type();
 	flush_rewrite_rules();
 } );
 

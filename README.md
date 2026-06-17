@@ -5,6 +5,7 @@ Plugin WordPress pour gerer des liens d'affiliation avec:
 - CPT `aff`.
 - URLs publiques `/go/slug`.
 - Redirection vers l'URL d'affiliation.
+- Redirection forcee avec ou sans slash final, meme si la resolution CPT tombe en 404.
 - Colonne QR code dans l'administration.
 - Shortcode `[aff_link id="123"]` ou `[aff_link slug="amazon"]`.
 
@@ -16,5 +17,4 @@ Plugin WordPress pour gerer des liens d'affiliation avec:
 
 ## Version
 
-Version: `1.2.1`
-
+Version: `1.2.4`
